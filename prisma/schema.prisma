@@ -1,0 +1,495 @@
+// ============================================================
+//  AKNA Electric Mobility — Schéma Prisma (backend monolithe)
+//  Un seul schéma partagé par tous les modules NestJS.
+//  Le gateway/BFF n'a PAS de base propre : il consomme ce schéma.
+//
+//  Hors de ce schéma (volontairement) :
+//   - Séries temporelles OBD (position, batterie, RPM) -> TimescaleDB
+//   - Cache & rate-limit & état OCPP live              -> Redis
+//   - Fichiers / exports / factures PDF                -> Object storage (S3)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+//  AUTH & RBAC  (domaine : module Auth)
+// ============================================================
+
+enum Role {
+  PARTICULIER
+  ENTREPRISE
+  HOST // opérateur de bornes
+  TECHNICIEN
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// Formule d'abonnement. Provisoire : remplacé par un modèle Subscription en P4.
+enum Plan {
+  NONE
+  STANDARD
+  PREMIUM
+  FLOTTE
+  HOST_PRO
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String?    @unique
+  phone        String     @unique // clé d'identification principale (mobile money)
+  passwordHash String?
+  firstName    String?
+  lastName     String?
+  locale       String     @default("fr") // fr / en
+  city         String?
+  role         Role       @default(PARTICULIER)
+  status       UserStatus @default(PENDING)
+  kycStatus    KycStatus  @default(NONE)
+  plan         Plan       @default(STANDARD)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  vehicles        Vehicle[]
+  sessions        ChargingSession[]
+  payments        Payment[]
+  paymentMethods  PaymentMethod[]
+  devices         Device[] // edge/BFF : appareils mobiles enregistrés
+  authSessions    AuthSession[] // edge/BFF : refresh tokens
+  notifications   Notification[]
+  tickets         SupportTicket[]   @relation("TicketRequester")
+  assignedTickets SupportTicket[]   @relation("TicketAssignee")
+  hostedPoints    ChargePoint[]     @relation("ChargePointHost")
+  wallet          Wallet?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([role, status])
+}
+
+// Entreprises / flottes
+model Organization {
+  id           String    @id @default(uuid())
+  name         String
+  billingEmail String?
+  users        User[]
+  vehicles     Vehicle[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// --- EDGE / BFF : sessions d'authentification (refresh tokens) ---
+model AuthSession {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshHash String // hash du refresh token, jamais en clair
+  userAgent   String?
+  ip          String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// --- AUTH : défis OTP (2FA admin par email, OTP mobile par SMS) ---
+enum OtpPurpose {
+  MOBILE_LOGIN
+  ADMIN_2FA
+  PASSWORD_RESET
+  PHONE_VERIFICATION
+}
+
+model OtpChallenge {
+  id         String     @id @default(uuid())
+  purpose    OtpPurpose
+  phone      String? // canal SMS
+  email      String? // canal email
+  codeHash   String // hash du code à 6 chiffres, jamais en clair
+  attempts   Int        @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([phone])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+// --- EDGE / BFF : appareils mobiles + tokens push (FCM/APNs) ---
+enum Platform {
+  IOS
+  ANDROID
+  WEB
+}
+
+model Device {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   Platform
+  pushToken  String? // token FCM/APNs pour notifications push
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([userId, pushToken])
+  @@index([userId])
+}
+
+// ============================================================
+//  VÉHICULES  (domaine : module Véhicules — métadonnées seulement)
+//  La télématique haute fréquence va dans TimescaleDB, pas ici.
+// ============================================================
+
+model Vehicle {
+  id             String        @id @default(uuid())
+  ownerId        String
+  owner          User          @relation(fields: [ownerId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  vin       String? @unique
+  plate     String?
+  make      String?
+  model     String?
+  obdSerial String? @unique // n° de série du boîtier Teltonika
+
+  // Dernier état connu (snapshot léger, mis à jour par le worker d'ingestion).
+  // L'historique complet vit dans TimescaleDB.
+  lastBatteryPct Float?
+  lastRangeKm    Float?
+  lastLatitude   Float?
+  lastLongitude  Float?
+  lastZone       String?
+  odometerKm     Int?
+  activeDtcCount Int       @default(0) // nombre de codes défaut actifs
+  lastSeenAt     DateTime?
+
+  sessions  ChargingSession[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([ownerId])
+  @@index([organizationId])
+}
+
+// ============================================================
+//  BORNES & OCPP  (domaine : module OCPP / CPMS)
+// ============================================================
+
+enum ChargePointType {
+  AC // 7-22 kW
+  DC // 30-120 kW
+  DC_ULTRA // 150 kW+
+}
+
+enum ChargePointStatus {
+  AVAILABLE
+  OCCUPIED
+  OFFLINE
+  FAULTED
+  MAINTENANCE
+}
+
+model ChargePoint {
+  id      String            @id @default(uuid())
+  ocppId  String            @unique // identifiant OCPP de la borne
+  name    String
+  type    ChargePointType
+  powerKw Float
+  status  ChargePointStatus @default(OFFLINE)
+
+  hostId    String? // opérateur (User role HOST)
+  host      User?   @relation("ChargePointHost", fields: [hostId], references: [id])
+  latitude  Float
+  longitude Float
+  address   String?
+  zone      String?
+  city      String?
+
+  lastSeenAt DateTime?
+
+  connectors Connector[]
+  sessions   ChargingSession[]
+  tickets    SupportTicket[]   @relation("TicketChargePoint")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([hostId])
+  @@index([city])
+}
+
+model Connector {
+  id            String            @id @default(uuid())
+  chargePointId String
+  chargePoint   ChargePoint       @relation(fields: [chargePointId], references: [id], onDelete: Cascade)
+  connectorId   Int // n° du connecteur sur la borne (OCPP)
+  standard      String? // Type2, CCS2, CHAdeMO...
+  status        ChargePointStatus @default(AVAILABLE) // en OCPP le statut est par connecteur
+  sessions      ChargingSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([chargePointId, connectorId])
+  @@index([chargePointId])
+}
+
+// ============================================================
+//  SESSIONS DE RECHARGE  (domaine : module Sessions)
+// ============================================================
+
+enum SessionStatus {
+  STARTED
+  CHARGING
+  STOPPED
+  COMPLETED
+  FAILED
+}
+
+model ChargingSession {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  vehicleId     String?
+  vehicle       Vehicle?    @relation(fields: [vehicleId], references: [id])
+  chargePointId String
+  chargePoint   ChargePoint @relation(fields: [chargePointId], references: [id])
+  connectorId   String?
+  connector     Connector?  @relation(fields: [connectorId], references: [id])
+
+  status      SessionStatus @default(STARTED)
+  startedAt   DateTime      @default(now())
+  endedAt     DateTime?
+  energyKwh   Float? // kWh délivrés
+  durationSec Int?
+  costFcfa    Int? // coût calculé (FCFA, entier)
+  tariffId    String?
+  tariff      Tariff?       @relation(fields: [tariffId], references: [id])
+
+  // Corrélation avec les messages OCPP StartTransaction / StopTransaction
+  ocppTransactionId Int?
+
+  payment Payment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([chargePointId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([ocppTransactionId])
+}
+
+// ============================================================
+//  TARIFICATION  (domaine : module Tarification)
+// ============================================================
+
+model Tariff {
+  id              String           @id @default(uuid())
+  name            String
+  chargePointType ChargePointType? // s'applique à un type de borne
+  targetRole      Role? // s'applique à un profil (Particulier / Entreprise / Host)
+  pricePerKwh     Int // FCFA / kWh
+  pricePerMinute  Int? // FCFA / minute (optionnel)
+
+  // Majoration heure pleine : 1.2 = +20 %
+  peakMultiplier      Float?
+  // Pénalité d'occupation après fin de charge (FCFA / min)
+  idlePricePerMinute  Int?
+  // Part reversée à l'hôte, en % de la recette
+  hostRevenueSharePct Int?
+
+  startHour Int? // plage horaire (0-23), null = tout le temps
+  endHour   Int?
+  active    Boolean @default(true)
+
+  sessions  ChargingSession[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([active])
+}
+
+// ============================================================
+//  PAIEMENTS  (domaine : module Paiements)
+// ============================================================
+
+enum PaymentProvider {
+  ORANGE_MONEY
+  MTN_MOMO
+  WAVE
+  CARD
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+model PaymentMethod {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  PaymentProvider
+  label     String? // "Orange **** 12" (jamais le n° complet)
+  token     String? // token du PSP, pas de données sensibles
+  isDefault Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([userId])
+}
+
+// Portefeuille AKNA (PaymentProvider.WALLET)
+model Wallet {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceFcfa Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  sessionId String?          @unique
+  session   ChargingSession? @relation(fields: [sessionId], references: [id])
+
+  provider    PaymentProvider
+  amountFcfa  Int
+  status      PaymentStatus   @default(PENDING)
+  providerRef String? // référence transaction PSP (CinetPay)
+
+  invoice   Invoice?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// --- EDGE : clé d'idempotence pour les webhooks de paiement ---
+// Mobile money renvoie parfois des callbacks dupliqués : on déduplique ici.
+model IdempotencyKey {
+  key       String   @id // clé fournie par le client / le PSP
+  scope     String // ex. "payment.webhook"
+  createdAt DateTime @default(now())
+
+  @@index([scope])
+}
+
+model Invoice {
+  id        String   @id @default(uuid())
+  paymentId String   @unique
+  payment   Payment  @relation(fields: [paymentId], references: [id])
+  number    String   @unique // numéro de facture séquentiel
+  pdfUrl    String? // lien S3 vers le PDF généré
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+//  NOTIFICATIONS & SAV  (domaine : modules Notifs / Support)
+// ============================================================
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  EMAIL
+}
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   NotificationChannel
+  title     String
+  body      String
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([userId, readAt])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model SupportTicket {
+  id            String       @id @default(uuid())
+  requesterId   String
+  requester     User         @relation("TicketRequester", fields: [requesterId], references: [id])
+  chargePointId String?
+  chargePoint   ChargePoint? @relation("TicketChargePoint", fields: [chargePointId], references: [id])
+  assignedToId  String? // technicien assigné
+  assignedTo    User?        @relation("TicketAssignee", fields: [assignedToId], references: [id])
+
+  subject     String
+  description String?
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  slaDueAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, priority])
+  @@index([assignedToId])
+}
+
+// --- EDGE : journal d'audit (traçabilité des actions admin) ---
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String? // qui a agi
+  action     String // ex. "charge_point.remote_stop"
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}

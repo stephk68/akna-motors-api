@@ -1,0 +1,29 @@
+# Compiled output
+/dist
+/build
+
+# Dependencies
+/node_modules
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDEs
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads
+/uploads/*
+!/uploads/.gitkeep

@@ -1,0 +1,59 @@
+name: CI/CD Backend - RECETTE
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - recette
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Image API (RECETTE)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME || 'kysaymeric' }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build & Push Backend (RECETTE)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            kysaymeric/akna-motors-api:recette
+            kysaymeric/akna-motors-api:latest
+
+  deploy-vps:
+    name: Déploiement VPS API (RECETTE)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: "${{ secrets.VPS_HOST != '' }}"
+
+    steps:
+      - name: Executer le redéploiement API sur le VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/akna-motors || mkdir -p /opt/akna-motors && cd /opt/akna-motors
+            docker compose -f docker-compose.recette.yml pull api-recette
+            docker compose -f docker-compose.recette.yml up -d api-recette
+            docker image prune -f

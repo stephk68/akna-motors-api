@@ -33,4 +33,4 @@ USER nestjs
 
 EXPOSE 3333
 
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "npx prisma db push && node dist/main"]

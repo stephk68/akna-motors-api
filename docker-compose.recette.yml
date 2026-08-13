@@ -35,5 +35,17 @@ services:
       JWT_SECRET: super_secret_jwt_akna_recette_key_2026_x89!
       CORS_ORIGINS: "*"
 
+  front-recette:
+    image: kysaymeric/akna-motors-front:recette
+    container_name: akna-front-recette
+    restart: always
+    depends_on:
+      - api-recette
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
 volumes:
   postgres_recette_data:

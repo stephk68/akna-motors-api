@@ -35,5 +35,17 @@ services:
       JWT_SECRET: super_secret_jwt_akna_dev_key_2026!
       CORS_ORIGINS: "*"
 
+  front-dev:
+    image: kysaymeric/akna-motors-front:dev
+    container_name: akna-front-dev
+    restart: always
+    depends_on:
+      - api-dev
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
 volumes:
   postgres_dev_data:

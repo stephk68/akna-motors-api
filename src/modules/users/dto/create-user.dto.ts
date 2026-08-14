@@ -1,4 +1,10 @@
-import { IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { Role, UserStatus, KycStatus, Plan } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -46,4 +52,14 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(Plan)
   plan?: Plan;
+
+  @ApiPropertyOptional({
+    minLength: 8,
+    description:
+      'Mot de passe initial. Omis, un mot de passe temporaire est généré et envoyé dans l’e-mail de bienvenue.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8, { message: 'Le mot de passe fait au moins 8 caractères' })
+  password?: string;
 }

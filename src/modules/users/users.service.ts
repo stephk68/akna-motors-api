@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../shared/services/prisma.service';
+import { generateTemporaryPassword } from '../../shared/utilities/password';
 import { PaginationService } from '../../shared/services/pagination.service';
 import { MailService } from '../../shared/services/mail.service';
 import { PaginationParams } from '../../shared/interfaces/pagination-params';
@@ -77,15 +79,28 @@ export class UsersService {
   }
 
   async createUser(dto: CreateUserDto) {
+    const { password, ...rest } = dto;
+
+    // Sans passwordHash, adminLogin s'arrête sur « Identifiants incorrects » :
+    // l'invitation créait un compte impossible à utiliser, alors que l'e-mail
+    // de bienvenue annonçait un mot de passe qui n'était jamais enregistré.
+    const initialPassword = password ?? generateTemporaryPassword();
+
     const user = await this.prisma.user.create({
-      data: dto,
+      data: {
+        ...rest,
+        // Le `default` de @ApiPropertyOptional ne documente que Swagger ; sans
+        // valeur explicite c'est le défaut Prisma (PENDING) qui s'applique.
+        status: rest.status ?? UserStatus.ACTIVE,
+        passwordHash: await bcrypt.hash(initialPassword, 10),
+      },
     });
 
     if (user.email) {
       await this.mailService.sendWelcomeEmail(
         user.email,
         user.firstName || 'Cher utilisateur',
-        'Password123!',
+        initialPassword,
         user.role,
       );
     }
@@ -95,9 +110,19 @@ export class UsersService {
 
   async updateUser(id: string, dto: UpdateUserDto) {
     await this.findByIdAdmin(id);
+
+    // `password` est hérité de CreateUserDto via PartialType mais n'existe pas
+    // en base : le passer tel quel à Prisma ferait échouer la mise à jour.
+    const { password, ...rest } = dto;
+
     return this.prisma.user.update({
       where: { id },
-      data: dto,
+      data: {
+        ...rest,
+        ...(password
+          ? { passwordHash: await bcrypt.hash(password, 10) }
+          : {}),
+      },
     });
   }
 

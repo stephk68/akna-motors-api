@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: akna_recette_password_987
       POSTGRES_DB: akna_recette_db
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_recette_data:/var/lib/postgresql/data
     healthcheck:

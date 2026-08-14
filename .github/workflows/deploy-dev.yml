@@ -82,7 +82,7 @@ jobs:
                   POSTGRES_PASSWORD: akna_dev_password_123
                   POSTGRES_DB: akna_dev_db
                 ports:
-                  - "5432:5432"
+                  - "127.0.0.1:5432:5432"
                 volumes:
                   - postgres_dev_data:/var/lib/postgresql/data
                 healthcheck:
@@ -99,7 +99,7 @@ jobs:
                   postgres-dev:
                     condition: service_healthy
                 ports:
-                  - "3333:3333"
+                  - "127.0.0.1:3333:3333"
                 environment:
                   NODE_ENV: development
                   PORT: 3333

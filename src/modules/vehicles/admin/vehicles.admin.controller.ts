@@ -1,10 +1,13 @@
-import { Controller, Get, Post, Param, Body, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Roles } from '../../../shared/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { VehiclesService } from '../vehicles.service';
 import { CustomRequest } from '../../../shared/interfaces/custom-request';
-import { CreateVehicleDto } from '../dto/create-vehicle.dto';
+import {
+  CreateVehicleDto,
+  UpdateVehicleDto,
+} from '../dto/create-vehicle.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -36,6 +39,13 @@ export class VehiclesAdminController {
   async findOne(@Param('id') id: string) {
     const vehicle = await this.vehiclesService.findByIdAdmin(id);
     return { data: vehicle };
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Mettre à jour un véhicule' })
+  async update(@Param('id') id: string, @Body() dto: UpdateVehicleDto) {
+    const vehicle = await this.vehiclesService.updateAdmin(id, dto);
+    return { data: vehicle, message: 'Véhicule mis à jour' };
   }
 
   @Get(':id/telemetry')

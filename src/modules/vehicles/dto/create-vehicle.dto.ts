@@ -34,6 +34,11 @@ export class CreateVehicleDto {
 }
 
 export class UpdateVehicleDto {
+  @ApiPropertyOptional({ example: '1HGCR2F83HA000000' })
+  @IsOptional()
+  @IsString()
+  vin?: string;
+
   @ApiPropertyOptional({ example: '2381 JK 01' })
   @IsOptional()
   @IsString()
@@ -48,4 +53,9 @@ export class UpdateVehicleDto {
   @IsOptional()
   @IsString()
   model?: string;
+
+  @ApiPropertyOptional({ example: 'TELTONIKA-OBD-001' })
+  @IsOptional()
+  @IsString()
+  obdSerial?: string;
 }

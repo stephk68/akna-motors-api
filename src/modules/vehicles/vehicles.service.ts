@@ -91,6 +91,18 @@ export class VehiclesService {
     });
   }
 
+  async updateAdmin(id: string, dto: UpdateVehicleDto) {
+    const vehicle = await this.prisma.vehicle.findUnique({ where: { id } });
+    if (!vehicle) throw new NotFoundException(`Véhicule ${id} introuvable.`);
+
+    // `vin` et `obdSerial` sont uniques en base : un doublon remonte en P2002,
+    // traduit en réponse propre par PrismaExceptionInterceptor.
+    return this.prisma.vehicle.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
   // Mobile
   async findAllMobile(userId: string) {
     return this.prisma.vehicle.findMany({

@@ -1,7 +1,16 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiNotFoundResponse } from '@nestjs/swagger';
 import { ChargePointsService } from '../charge-points.service';
 import { ChargePointType } from '@prisma/client';
+import {
+  ApiEnvelopeArrayResponse,
+  ApiEnvelopeResponse,
+  ApiErrorResponseDto,
+} from '../../../shared/dto/api-response.dto';
+import {
+  StationDetailDto,
+  StationListItemDto,
+} from '../dto/station-response.dto';
 
 @ApiTags('mobile')
 @ApiBearerAuth()
@@ -11,6 +20,10 @@ export class ChargePointsMobileController {
 
   @Get()
   @ApiOperation({ summary: 'Liste des stations pour le mobile' })
+  @ApiEnvelopeArrayResponse(StationListItemDto, {
+    description:
+      'Liste non paginée. `distanceKm` n’est calculé que si `lat` et `lng` sont fournis, sinon null.',
+  })
   async findStations(
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
@@ -32,6 +45,10 @@ export class ChargePointsMobileController {
 
   @Get('nearby')
   @ApiOperation({ summary: 'Stations les plus proches' })
+  @ApiEnvelopeArrayResponse(StationListItemDto, {
+    description:
+      'Trié par distance croissante et tronqué à `limit` (5 par défaut). Les stations sans distance calculable sont exclues, donc `distanceKm` est toujours renseigné ici.',
+  })
   async findNearby(
     @Query('lat') lat: string,
     @Query('lng') lng: string,
@@ -54,6 +71,13 @@ export class ChargePointsMobileController {
 
   @Get(':id')
   @ApiOperation({ summary: "Détails d'une station pour le mobile" })
+  @ApiEnvelopeResponse(StationDetailDto, {
+    description: 'Borne complète, connecteurs et tarif applicable inclus.',
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorResponseDto,
+    description: 'Station introuvable.',
+  })
   async findOne(@Param('id') id: string) {
     const station = await this.cpService.findStationMobileDetail(id);
     return { data: station };

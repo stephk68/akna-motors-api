@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../shared/services/prisma.service';
 import { generateTemporaryPassword } from '../../shared/utilities/password';
@@ -124,6 +128,42 @@ export class UsersService {
           : {}),
       },
     });
+  }
+
+  /**
+   * Réattribue un mot de passe et l'envoie par e-mail.
+   *
+   * Sert aux comptes créés avant que createUser ne pose un passwordHash :
+   * ils existent en base mais sont refusés à la connexion, et aucune route
+   * ne permettait de les débloquer.
+   */
+  async resetPasswordAdmin(id: string, password?: string) {
+    const user = await this.findByIdAdmin(id);
+
+    if (!user.email) {
+      throw new BadRequestException(
+        "Ce compte n'a pas d'adresse e-mail : impossible de lui transmettre un mot de passe.",
+      );
+    }
+
+    const newPassword = password ?? generateTemporaryPassword();
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash: await bcrypt.hash(newPassword, 10) },
+    });
+
+    const emailSent = await this.mailService.sendWelcomeEmail(
+      user.email,
+      user.firstName || 'Cher utilisateur',
+      newPassword,
+      user.role,
+    );
+
+    // Le mot de passe en clair n'est jamais renvoyé : il ne doit exister que
+    // dans l'e-mail. `emailSent` à false signale un échec SMTP, auquel cas le
+    // compte a bien un nouveau mot de passe que personne ne connaît.
+    return { id: user.id, email: user.email, emailSent };
   }
 
   async updateRole(id: string, role: Role) {

@@ -15,6 +15,7 @@ import { CustomRequest } from '../../../shared/interfaces/custom-request';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateRoleDto, UpdateStatusDto, UpdateKycDto } from '../dto/update-role.dto';
+import { ResetUserPasswordDto } from '../dto/reset-user-password.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -56,6 +57,25 @@ export class UsersAdminController {
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     const user = await this.usersService.updateUser(id, dto);
     return { data: user, message: 'Utilisateur mis à jour' };
+  }
+
+  @Post(':id/reset-password')
+  @ApiOperation({
+    summary: 'Réattribuer un mot de passe et l’envoyer par e-mail',
+    description:
+      'Pose un nouveau mot de passe et le transmet à l’utilisateur par e-mail. Le mot de passe n’est jamais renvoyé dans la réponse. Débloque notamment les comptes créés sans passwordHash.',
+  })
+  async resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetUserPasswordDto,
+  ) {
+    const result = await this.usersService.resetPasswordAdmin(id, dto.password);
+    return {
+      data: result,
+      message: result.emailSent
+        ? 'Mot de passe réattribué et envoyé par e-mail'
+        : 'Mot de passe réattribué, mais l’envoi de l’e-mail a échoué',
+    };
   }
 
   @Patch(':id/role')

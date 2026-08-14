@@ -100,16 +100,41 @@ jobs:
                     condition: service_healthy
                 ports:
                   - "127.0.0.1:3333:3333"
+                # Secrets (JWT_SECRET, SMTP_USER, SMTP_PASS) : fichier present
+                # uniquement sur le serveur, jamais versionne. Le script de
+                # deploiement le cree vide s il manque pour ne pas casser compose.
+                # Attention : les cles definies dans "environment" ci-dessous
+                # priment sur celles du env_file.
+                env_file:
+                  - .env.dev
                 environment:
                   NODE_ENV: development
                   PORT: 3333
                   DATABASE_URL: postgresql://akna_dev:akna_dev_password_123@postgres-dev:5432/akna_dev_db?schema=public
-                  JWT_SECRET: super_secret_jwt_akna_dev_key_2026!
                   CORS_ORIGINS: "*"
+                  JWT_ACCESS_EXPIRATION: 15m
+                  JWT_REFRESH_EXPIRATION: 30d
+                  OCPP_DRIVER: mock
+                  PAYMENT_DRIVER: mock
+                  SMS_DRIVER: mock
+                  OTP_EXPOSE_CODE: "true"
+                  OTP_TTL_SECONDS: 300
+                  UPLOAD_DEST: ./uploads
+                  MAX_FILE_SIZE: 5242880
+                  SWAGGER_ENABLED: "true"
+                  SWAGGER_PATH: api/docs
+                  SMTP_HOST: smtp.gmail.com
+                  SMTP_PORT: 587
+                  SMTP_SECURE: "false"
+                  SMTP_FROM: '"AKNA Electric Mobility" <noreply@aknamotors.com>'
 
             volumes:
               postgres_dev_data:
             EOF
+            # Garde-fou : compose refuse de demarrer si le env_file est absent.
+            # Sur un serveur neuf il faudra y remettre les vrais secrets.
+            [ -f .env.dev ] || touch .env.dev
+            chmod 600 .env.dev
             echo "Déploiement de l'image kysaymeric/akna-motors-api:${API_IMAGE_TAG}"
             docker compose -f docker-compose.dev.yml pull api-dev
             docker compose -f docker-compose.dev.yml up -d postgres-dev api-dev

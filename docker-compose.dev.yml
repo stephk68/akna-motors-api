@@ -28,12 +28,30 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:3333:3333"
+    # Secrets (JWT_SECRET, SMTP_USER, SMTP_PASS) : fichier local, non versionne.
+    # Les cles definies dans "environment" ci-dessous priment sur le env_file.
+    env_file:
+      - .env.dev
     environment:
       NODE_ENV: development
       PORT: 3333
       DATABASE_URL: postgresql://akna_dev:akna_dev_password_123@postgres-dev:5432/akna_dev_db?schema=public
-      JWT_SECRET: super_secret_jwt_akna_dev_key_2026!
       CORS_ORIGINS: "*"
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_EXPIRATION: 30d
+      OCPP_DRIVER: mock
+      PAYMENT_DRIVER: mock
+      SMS_DRIVER: mock
+      OTP_EXPOSE_CODE: "true"
+      OTP_TTL_SECONDS: 300
+      UPLOAD_DEST: ./uploads
+      MAX_FILE_SIZE: 5242880
+      SWAGGER_ENABLED: "true"
+      SWAGGER_PATH: api/docs
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_SECURE: "false"
+      SMTP_FROM: '"AKNA Electric Mobility" <noreply@aknamotors.com>'
 
 volumes:
   postgres_dev_data:

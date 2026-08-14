@@ -105,6 +105,8 @@ jobs:
                 # deploiement le cree vide s il manque pour ne pas casser compose.
                 # Attention : les cles definies dans "environment" ci-dessous
                 # priment sur celles du env_file.
+                volumes:
+                  - uploads_dev_data:/app/uploads
                 env_file:
                   - .env.dev
                 environment:
@@ -130,6 +132,7 @@ jobs:
 
             volumes:
               postgres_dev_data:
+              uploads_dev_data:
             EOF
             # Garde-fou : compose refuse de demarrer si le env_file est absent.
             # Sur un serveur neuf il faudra y remettre les vrais secrets.

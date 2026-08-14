@@ -30,6 +30,8 @@ services:
       - "127.0.0.1:3333:3333"
     # Secrets (JWT_SECRET, SMTP_USER, SMTP_PASS) : fichier local, non versionne.
     # Les cles definies dans "environment" ci-dessous priment sur le env_file.
+    volumes:
+      - uploads_dev_data:/app/uploads
     env_file:
       - .env.dev
     environment:
@@ -55,3 +57,4 @@ services:
 
 volumes:
   postgres_dev_data:
+  uploads_dev_data:

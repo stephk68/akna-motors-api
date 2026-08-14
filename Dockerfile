@@ -33,6 +33,12 @@ COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/dist-seed ./dist-seed
 COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
 
+# Point de montage des uploads. Il doit exister dans l image ET appartenir a
+# nestjs : un volume nomme herite des droits du repertoire sous-jacent au
+# premier montage. Sans cela le volume serait cree en root et l application,
+# qui tourne en uid 1001, ne pourrait pas y ecrire.
+RUN mkdir -p /app/uploads && chown nestjs:nodejs /app/uploads
+
 USER nestjs
 
 EXPOSE 3333

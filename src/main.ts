@@ -18,15 +18,18 @@ async function bootstrap() {
   // Sécurité
   app.use(helmet());
 
-  // CORS : liste blanche explicite. Une liste vide n'autorise que le mode
-  // développement (toutes origines) — jamais en production.
+  // CORS : liste blanche explicite. Une liste vide — ou le joker `*` — n'autorise
+  // que le mode développement (toutes origines) — jamais en production.
+  // `origin: true` renvoie l'origine de la requête : contrairement à `*`, c'est la
+  // seule forme compatible avec `credentials: true`.
   const origins = (config.get<string>('CORS_ORIGINS') ?? '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+  const allowAllOrigins = origins.length === 0 || origins.includes('*');
 
   app.enableCors({
-    origin: origins.length > 0 ? origins : true,
+    origin: allowAllOrigins ? true : origins,
     credentials: true,
   });
 
@@ -101,7 +104,7 @@ async function bootstrap() {
   logger.log(`Préfixe API : /${API_PREFIX}`);
   logger.log(`Documentation : http://localhost:${port}/${swaggerPath}`);
   logger.log(
-    `CORS : ${origins.length > 0 ? origins.join(', ') : 'toutes origines (développement)'}`,
+    `CORS : ${allowAllOrigins ? 'toutes origines (développement)' : origins.join(', ')}`,
   );
 }
 

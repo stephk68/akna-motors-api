@@ -13,9 +13,18 @@ jobs:
     name: Build & Push Docker Image API (RECETTE)
     runs-on: ubuntu-latest
 
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Générer le tag de version unique
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "image_tag=rec-${{ github.run_number }}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -38,30 +47,36 @@ jobs:
           tags: |
             kysaymeric/akna-motors-api:recette
             kysaymeric/akna-motors-api:latest
+            kysaymeric/akna-motors-api:${{ steps.meta.outputs.image_tag }}
+            kysaymeric/akna-motors-api:${{ github.sha }}
 
   deploy-vps:
     name: Déploiement VPS API (RECETTE)
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: "${{ secrets.VPS_HOST != '' }}"
 
     steps:
       - name: Executer le redéploiement API sur le VPS
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          API_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          password: ${{ secrets.VPS_PASSWORD }}
           port: ${{ secrets.VPS_PORT || 2222 }}
+          envs: API_IMAGE_TAG
           script: |
-            mkdir -p ~/akna-motors
-            cd ~/akna-motors
+            set -e
+            mkdir -p ~/akna-motors/api
+            cd ~/akna-motors/api
             cat << 'EOF' > docker-compose.recette.yml
             version: '3.8'
 
             services:
               postgres-recette:
-                image: postgres:16-alpine
+                image: postgres:${POSTGRES_VERSION:-16-alpine}
                 container_name: akna-postgres-recette
                 restart: always
                 environment:
@@ -79,7 +94,7 @@ jobs:
                   retries: 5
 
               api-recette:
-                image: kysaymeric/akna-motors-api:recette
+                image: kysaymeric/akna-motors-api:${API_IMAGE_TAG:-recette}
                 container_name: akna-api-recette
                 restart: always
                 depends_on:
@@ -94,21 +109,11 @@ jobs:
                   JWT_SECRET: super_secret_jwt_akna_recette_key_2026_x89!
                   CORS_ORIGINS: "*"
 
-              front-recette:
-                image: kysaymeric/akna-motors-front:recette
-                container_name: akna-front-recette
-                restart: always
-                depends_on:
-                  - api-recette
-                ports:
-                  - "3001:3000"
-                environment:
-                  NODE_ENV: production
-                  PORT: 3000
-
             volumes:
               postgres_recette_data:
             EOF
+            echo "Déploiement de l'image kysaymeric/akna-motors-api:${API_IMAGE_TAG}"
             docker compose -f docker-compose.recette.yml pull api-recette
-            docker compose -f docker-compose.recette.yml up -d api-recette postgres-recette
+            docker compose -f docker-compose.recette.yml up -d postgres-recette api-recette
             docker image prune -f
+            docker compose -f docker-compose.recette.yml ps

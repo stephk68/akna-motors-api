@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres-dev:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRES_VERSION:-16-alpine}
     container_name: akna-postgres-dev
     restart: always
     environment:
@@ -20,7 +20,7 @@ services:
       retries: 5
 
   api-dev:
-    image: kysaymeric/akna-motors-api:dev
+    image: kysaymeric/akna-motors-api:${API_IMAGE_TAG:-dev}
     container_name: akna-api-dev
     restart: always
     depends_on:
@@ -34,18 +34,6 @@ services:
       DATABASE_URL: postgresql://akna_dev:akna_dev_password_123@postgres-dev:5432/akna_dev_db?schema=public
       JWT_SECRET: super_secret_jwt_akna_dev_key_2026!
       CORS_ORIGINS: "*"
-
-  front-dev:
-    image: kysaymeric/akna-motors-front:dev
-    container_name: akna-front-dev
-    restart: always
-    depends_on:
-      - api-dev
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: production
-      PORT: 3000
 
 volumes:
   postgres_dev_data:

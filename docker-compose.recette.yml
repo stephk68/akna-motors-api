@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres-recette:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRES_VERSION:-16-alpine}
     container_name: akna-postgres-recette
     restart: always
     environment:
@@ -20,7 +20,7 @@ services:
       retries: 5
 
   api-recette:
-    image: kysaymeric/akna-motors-api:recette
+    image: kysaymeric/akna-motors-api:${API_IMAGE_TAG:-recette}
     container_name: akna-api-recette
     restart: always
     depends_on:
@@ -34,18 +34,6 @@ services:
       DATABASE_URL: postgresql://akna_recette:akna_recette_password_987@postgres-recette:5432/akna_recette_db?schema=public
       JWT_SECRET: super_secret_jwt_akna_recette_key_2026_x89!
       CORS_ORIGINS: "*"
-
-  front-recette:
-    image: kysaymeric/akna-motors-front:recette
-    container_name: akna-front-recette
-    restart: always
-    depends_on:
-      - api-recette
-    ports:
-      - "3001:3000"
-    environment:
-      NODE_ENV: production
-      PORT: 3000
 
 volumes:
   postgres_recette_data:

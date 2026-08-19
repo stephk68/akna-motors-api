@@ -66,6 +66,16 @@ export class ChargePointsService {
         powerKw: true,
         type: true,
         city: true,
+        zone: true,
+        address: true,
+        connectors: {
+          select: {
+            id: true,
+            connectorId: true,
+            standard: true,
+            status: true,
+          },
+        },
       },
     });
   }

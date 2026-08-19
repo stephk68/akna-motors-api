@@ -44,6 +44,36 @@ export class VehiclesService {
     );
   }
 
+  async getMapPoints() {
+    return this.prisma.vehicle.findMany({
+      where: {
+        lastLatitude: { not: null },
+        lastLongitude: { not: null },
+      },
+      select: {
+        id: true,
+        vin: true,
+        plate: true,
+        make: true,
+        model: true,
+        lastBatteryPct: true,
+        lastRangeKm: true,
+        lastLatitude: true,
+        lastLongitude: true,
+        lastZone: true,
+        lastSeenAt: true,
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
   async findByIdAdmin(id: string) {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },

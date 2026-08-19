@@ -8,6 +8,8 @@
  * Utilisation :
  * - `npm run seed` : insère/met à jour l'admin et les tarifs sans supprimer le reste.
  * - `npm run seed:reset` (ou `--clean`) : réinitialise la base et recrée l'admin.
+ * - `npm run seed:demo` (ou `--demo`) : ajoute le jeu de démonstration
+ *   Côte d'Ivoire (bornes, flottes, véhicules géolocalisés).
  */
 import {
   ChargePointType,
@@ -18,6 +20,7 @@ import {
   UserStatus,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { seedDemoCoteDIvoire } from './demo-ci';
 
 const prisma = new PrismaClient();
 
@@ -110,6 +113,7 @@ const TARIFFS = [
 
 async function main() {
   const isClean = process.argv.includes('--clean');
+  const withDemo = process.argv.includes('--demo');
 
   if (isClean) {
     console.log('🧹 Nettoyage complet de la base de données…');
@@ -177,6 +181,11 @@ async function main() {
     }
   }
   console.log(`   ${TARIFFS.length} tarifs de base configurés.`);
+
+  /* --- Jeu de démonstration Côte d'Ivoire (optionnel) --- */
+  if (withDemo) {
+    await seedDemoCoteDIvoire(prisma, passwordHash);
+  }
 
   console.log('✅ Seed terminé avec succès ! Mot de passe par défaut :', DEFAULT_PASSWORD);
 }

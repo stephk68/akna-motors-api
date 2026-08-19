@@ -21,6 +21,8 @@
     "fm": "prisma format",
     "seed": "ts-node prisma/seeds/seed.ts",
     "seed:reset": "ts-node prisma/seeds/seed.ts --clean",
+    "seed:demo": "ts-node prisma/seeds/seed.ts --demo",
+    "seed:demo:reset": "ts-node prisma/seeds/seed.ts --clean --demo",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

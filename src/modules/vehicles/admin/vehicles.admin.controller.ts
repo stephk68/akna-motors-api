@@ -27,6 +27,13 @@ export class VehiclesAdminController {
     return { data: result };
   }
 
+  @Get('map')
+  @ApiOperation({ summary: 'Points cartographiques des véhicules géolocalisés' })
+  async getMap() {
+    const points = await this.vehiclesService.getMapPoints();
+    return { data: points };
+  }
+
   @Post()
   @ApiOperation({ summary: 'Connecter / créer un véhicule' })
   async create(@Body() dto: CreateVehicleDto) {
